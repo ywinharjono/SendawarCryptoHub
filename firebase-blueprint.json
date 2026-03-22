@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and reputation data",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "User's display name" },
+        "email": { "type": "string", "description": "User's email address" },
+        "reputation": { "type": "number", "description": "User's reputation points" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role" }
+      },
+      "required": ["displayName", "email", "reputation", "role"]
+    },
+    "Signal": {
+      "title": "Signal",
+      "description": "Trading signal shared by users",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "UID of the author" },
+        "authorName": { "type": "string", "description": "Display name of the author" },
+        "asset": { "type": "string", "description": "Crypto asset (e.g., BTC, ETH)" },
+        "type": { "type": "string", "enum": ["buy", "sell"], "description": "Signal type" },
+        "price": { "type": "number", "description": "Target price for the signal" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Time the signal was posted" },
+        "accuracy": { "type": "number", "description": "Accuracy score (0-100) if verified" }
+      },
+      "required": ["authorId", "authorName", "asset", "type", "price", "timestamp"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Price alert set by a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user who set the alert" },
+        "asset": { "type": "string", "description": "Crypto asset to monitor" },
+        "targetPrice": { "type": "number", "description": "Price level to trigger the alert" },
+        "condition": { "type": "string", "enum": ["above", "below"], "description": "Trigger condition" },
+        "active": { "type": "boolean", "description": "Whether the alert is still active" }
+      },
+      "required": ["userId", "asset", "targetPrice", "condition", "active"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/signals/{signalId}": {
+      "schema": "Signal",
+      "description": "Shared trading signals"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User price alerts"
+    }
+  }
+}

@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - displayName: string (required)
+    //   - email: string (required)
+    //   - reputation: number (required)
+    //   - role: string (required, enum: ['admin', 'user'])
+    //
+    // Collection: signals
+    // Document ID: signalId
+    // Fields:
+    //   - authorId: string (required)
+    //   - authorName: string (required)
+    //   - asset: string (required)
+    //   - type: string (required, enum: ['buy', 'sell'])
+    //   - price: number (required)
+    //   - timestamp: string (required, ISO 8601)
+    //   - accuracy: number (optional)
+    //
+    // Collection: notifications
+    // Document ID: notificationId
+    // Fields:
+    //   - userId: string (required)
+    //   - asset: string (required)
+    //   - targetPrice: number (required)
+    //   - condition: string (required, enum: ['above', 'below'])
+    //   - active: bool (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "ywinharjono@archietechs.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['displayName', 'email', 'reputation', 'role']) &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             data.email is string && data.email.size() > 0 &&
+             data.reputation is number &&
+             data.role in ['admin', 'user'];
+    }
+
+    function isValidSignal(data) {
+      return hasOnlyAllowedFields(['authorId', 'authorName', 'asset', 'type', 'price', 'timestamp', 'accuracy']) &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.authorName is string && data.authorName.size() > 0 &&
+             data.asset is string && data.asset.size() > 0 &&
+             data.type in ['buy', 'sell'] &&
+             data.price is number && data.price > 0 &&
+             data.timestamp is string;
+    }
+
+    function isValidNotification(data) {
+      return hasOnlyAllowedFields(['userId', 'asset', 'targetPrice', 'condition', 'active']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.asset is string && data.asset.size() > 0 &&
+             data.targetPrice is number && data.targetPrice > 0 &&
+             data.condition in ['above', 'below'] &&
+             data.active is bool;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user' && request.resource.data.reputation == 0;
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role && request.resource.data.reputation == resource.data.reputation) || isAdmin();
+    }
+
+    match /signals/{signalId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSignal(request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.authorId == request.auth.uid);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidNotification(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "CryptoHub Forum",
+  "description": "A community forum for crypto enthusiasts to share signals, get AI-powered technical analysis, and track price notifications.",
+  "requestFramePermissions": ["geolocation"]
+}
