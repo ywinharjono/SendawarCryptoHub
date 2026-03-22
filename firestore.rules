@@ -48,8 +48,10 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "ywinharjono@archietechs.com" && request.auth.token.email_verified == true));
+        (
+          (request.auth.token.email == "ywinharjono@archietechs.com" && request.auth.token.email_verified == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
     function hasOnlyAllowedFields(fields) {
@@ -60,11 +62,12 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['displayName', 'email', 'reputation', 'role']) &&
+      return hasOnlyAllowedFields(['displayName', 'email', 'reputation', 'role', 'badges']) &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
              data.email is string && data.email.size() > 0 &&
              data.reputation is number &&
-             data.role in ['admin', 'user'];
+             data.role in ['admin', 'user'] &&
+             (!('badges' in data) || data.badges is list);
     }
 
     function isValidSignal(data) {
@@ -93,7 +96,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user' && request.resource.data.reputation == 0;
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role && request.resource.data.reputation == resource.data.reputation) || isAdmin();
+      allow update: if isAuthenticated() && ( (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role && request.resource.data.reputation == resource.data.reputation) || isAdmin() );
     }
 
     match /signals/{signalId} {

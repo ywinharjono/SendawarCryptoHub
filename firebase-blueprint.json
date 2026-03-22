@@ -8,7 +8,8 @@
         "displayName": { "type": "string", "description": "User's display name" },
         "email": { "type": "string", "description": "User's email address" },
         "reputation": { "type": "number", "description": "User's reputation points" },
-        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role" }
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role" },
+        "badges": { "type": "array", "items": { "type": "string" }, "description": "User's earned badges" }
       },
       "required": ["displayName", "email", "reputation", "role"]
     },

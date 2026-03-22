@@ -14,7 +14,8 @@ import {
   query, 
   orderBy, 
   onSnapshot,
-  getDocFromServer
+  getDocFromServer,
+  where
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile, Signal, PriceNotification } from './types';
@@ -30,7 +31,9 @@ import {
   ChevronRight,
   AlertCircle,
   TrendingDown,
-  Activity
+  Activity,
+  ArrowLeft,
+  User as UserIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -106,17 +109,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
+            setProfile({ uid: userDoc.id, ...userDoc.data() } as UserProfile);
           } else {
-            const newProfile: UserProfile = {
-              uid: user.uid,
+            const newProfile: Omit<UserProfile, 'uid'> = {
               displayName: user.displayName || 'Anonymous',
               email: user.email || '',
               reputation: 0,
               role: 'user'
             };
             await setDoc(userDocRef, newProfile);
-            setProfile(newProfile);
+            setProfile({ uid: user.uid, ...newProfile } as UserProfile);
           }
         } catch (error) {
           handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
@@ -472,12 +474,15 @@ function Alerts() {
   const [newAlert, setNewAlert] = useState({ asset: '', targetPrice: '', condition: 'above' });
 
   useEffect(() => {
-    if (!profile) return;
-    const q = query(collection(db, 'notifications'), orderBy('asset'));
+    if (!profile?.uid) return;
+    const q = query(
+      collection(db, 'notifications'), 
+      where('userId', '==', profile.uid),
+      orderBy('asset')
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setAlerts(snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as PriceNotification))
-        .filter(a => a.userId === profile.uid)
       );
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
     return unsubscribe;
@@ -616,7 +621,7 @@ function Alerts() {
   );
 }
 
-function Rankings() {
+function Rankings({ onSelectUser }: { onSelectUser: (userId: string) => void }) {
   const [rankings, setRankings] = useState<UserProfile[]>([]);
 
   useEffect(() => {
@@ -636,10 +641,11 @@ function Rankings() {
 
       <div className="bg-white border border-gray-100 rounded-[32px] overflow-hidden shadow-sm">
         {rankings.map((user, i) => (
-          <div 
+          <button 
             key={user.uid} 
+            onClick={() => onSelectUser(user.uid)}
             className={cn(
-              "flex items-center gap-4 p-5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors",
+              "w-full flex items-center gap-4 p-5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors text-left",
               i === 0 && "bg-indigo-50/30"
             )}
           >
@@ -661,6 +667,126 @@ function Rankings() {
                 <span className="font-bold text-gray-900">{user.reputation}</span>
               </div>
               <p className="text-[10px] text-gray-400 font-medium">Points</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Profile({ userId, onBack }: { userId: string, onBack: () => void }) {
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userSignals, setUserSignals] = useState<Signal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    const fetchUser = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUserProfile({ uid: userDoc.id, ...data } as UserProfile);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, `users/${userId}`);
+      }
+    };
+
+    const q = query(
+      collection(db, 'signals'), 
+      where('authorId', '==', userId),
+      orderBy('timestamp', 'desc')
+    );
+    const unsubscribeSignals = onSnapshot(q, (snapshot) => {
+      setUserSignals(snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Signal))
+      );
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'signals'));
+
+    fetchUser();
+    return unsubscribeSignals;
+  }, [userId]);
+
+  if (loading) return <div className="flex justify-center py-20"><Activity className="animate-spin text-indigo-600" /></div>;
+  if (!userProfile) return <div className="text-center py-20">User not found</div>;
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-6 pb-24 md:pb-8 md:ml-20">
+      <button onClick={onBack} className="flex items-center gap-2 text-gray-500 hover:text-indigo-600 transition-colors mb-6 font-medium">
+        <ArrowLeft size={20} />
+        Back to Leaderboard
+      </button>
+
+      <div className="bg-white border border-gray-100 rounded-[40px] p-8 mb-8 shadow-sm">
+        <div className="flex flex-col items-center text-center">
+          <div className="w-24 h-24 bg-indigo-50 text-indigo-600 rounded-[32px] flex items-center justify-center mb-4 shadow-inner">
+            <UserIcon size={48} />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">{userProfile.displayName}</h1>
+          <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-6">{userProfile.role}</p>
+          
+          <div className="flex gap-8 w-full justify-center border-t border-gray-50 pt-6">
+            <div className="text-center">
+              <p className="text-2xl font-black text-gray-900">{userProfile.reputation}</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reputation</p>
+            </div>
+            <div className="text-center border-l border-gray-50 pl-8">
+              <p className="text-2xl font-black text-gray-900">{userSignals.length}</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Signals</p>
+            </div>
+          </div>
+        </div>
+
+        {userProfile.badges && userProfile.badges.length > 0 && (
+          <div className="mt-8 pt-6 border-t border-gray-50">
+            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-4 text-center">Badges Earned</h3>
+            <div className="flex flex-wrap justify-center gap-3">
+              {userProfile.badges.map((badge, i) => (
+                <div key={i} className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2">
+                  <Award size={14} />
+                  {badge}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <h2 className="text-xl font-bold text-gray-900 mb-6">Past Signals</h2>
+      <div className="space-y-4">
+        {userSignals.length === 0 && <p className="text-center text-gray-400 py-8">No signals shared yet</p>}
+        {userSignals.map((signal) => (
+          <div 
+            key={signal.id}
+            className="bg-white border border-gray-100 rounded-3xl p-5 flex items-center gap-4"
+          >
+            <div className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0",
+              signal.type === 'buy' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+            )}>
+              {signal.type === 'buy' ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <h3 className="font-bold text-gray-900">{signal.asset}</h3>
+                <span className={cn(
+                  "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase",
+                  signal.type === 'buy' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                )}>
+                  {signal.type}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 truncate">
+                Target: <span className="font-mono font-medium text-gray-900">${signal.price.toLocaleString()}</span>
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[10px] text-gray-400 font-medium">
+                {formatDistanceToNow(new Date(signal.timestamp))} ago
+              </p>
             </div>
           </div>
         ))}
@@ -703,6 +829,7 @@ function Login() {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('forum');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -719,11 +846,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans selection:bg-indigo-100 selection:text-indigo-900">
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Navbar activeTab={activeTab === 'profile' ? 'rankings' : activeTab} setActiveTab={(tab) => {
+        setActiveTab(tab);
+        setSelectedUserId(null);
+      }} />
       <main className="pb-20 md:pb-0">
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
+            key={activeTab === 'profile' ? `profile-${selectedUserId}` : activeTab}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
@@ -732,7 +862,13 @@ export default function App() {
             {activeTab === 'forum' && <Forum />}
             {activeTab === 'chatbot' && <Chatbot />}
             {activeTab === 'alerts' && <Alerts />}
-            {activeTab === 'rankings' && <Rankings />}
+            {activeTab === 'rankings' && <Rankings onSelectUser={(uid) => {
+              setSelectedUserId(uid);
+              setActiveTab('profile');
+            }} />}
+            {activeTab === 'profile' && selectedUserId && (
+              <Profile userId={selectedUserId} onBack={() => setActiveTab('rankings')} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

@@ -4,6 +4,7 @@ export interface UserProfile {
   email: string;
   reputation: number;
   role: 'admin' | 'user';
+  badges?: string[];
 }
 
 export interface Signal {
